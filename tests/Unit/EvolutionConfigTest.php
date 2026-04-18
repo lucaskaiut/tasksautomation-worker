@@ -13,6 +13,9 @@ class EvolutionConfigTest extends TestCase
         $this->assertIsArray($config);
         $this->assertArrayHasKey('notifications', $config);
         $this->assertArrayHasKey('enabled', $config['notifications']);
+        $this->assertArrayHasKey('email', $config);
+        $this->assertArrayHasKey('enabled', $config['email']);
+        $this->assertArrayHasKey('to', $config['email']);
         $this->assertArrayHasKey('whatsapp', $config);
         $this->assertArrayHasKey('enabled', $config['whatsapp']);
         $this->assertArrayHasKey('base_url', $config['whatsapp']);

@@ -10,6 +10,7 @@ use App\Services\Execution\ExecutionHeartbeatService;
 use App\Services\Execution\ExecutionLoopService;
 use App\Services\Execution\TaskReviewFlowService;
 use App\Services\Execution\WorkerRunnerService;
+use App\Services\Notifications\Channels\EmailNotificationChannel;
 use App\Services\Notifications\Channels\WhatsAppNotificationChannel;
 use App\Services\Notifications\Evolution\EvolutionApiClient;
 use App\Services\Notifications\TaskStatusNotificationFormatter;
@@ -40,6 +41,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(EvolutionApiClient::class);
         $this->app->singleton(TaskStatusNotificationFormatter::class);
         $this->app->singleton(TaskStatusNotificationOrchestrator::class);
+        $this->app->singleton(EmailNotificationChannel::class);
         $this->app->singleton(WhatsAppNotificationChannel::class);
         $this->app->singleton(GitPublicationService::class);
         $this->app->singleton(PromptBuilderService::class);
@@ -50,6 +52,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(WorkspaceService::class);
 
         $this->app->tag([
+            EmailNotificationChannel::class,
             WhatsAppNotificationChannel::class,
         ], 'notification.channels');
 
