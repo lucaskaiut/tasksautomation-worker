@@ -44,6 +44,7 @@ class WorkerRunnerServiceTest extends TestCase
     {
         $task = $this->makeTask();
         $paths = $this->makeWorkspacePaths();
+        $progressMessages = [];
 
         $api = Mockery::mock(TaskApiClient::class);
         $api->shouldReceive('claimTask')->once()->andReturn($task);
@@ -97,11 +98,16 @@ class WorkerRunnerServiceTest extends TestCase
         $reporter->shouldNotReceive('reportFailure');
         $this->app->instance(TaskResultReporterService::class, $reporter);
 
-        $result = app(WorkerRunnerService::class)->runCycle();
+        $result = app(WorkerRunnerService::class)->runCycle(function (string $message) use (&$progressMessages): void {
+            $progressMessages[] = $message;
+        });
 
         $this->assertTrue($result->hadTask);
         $this->assertTrue($result->succeeded);
         $this->assertSame($task->id, $result->taskId);
+        $this->assertSame([
+            'Task 501 claimed. Starting execution for "Executar task".',
+        ], $progressMessages);
     }
 
     public function test_run_cycle_processes_task_and_reports_failure(): void

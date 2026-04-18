@@ -20,7 +20,9 @@ class WorkerRunCommand extends Command
     public function handle(): int
     {
         do {
-            $result = $this->workerRunnerService->runCycle();
+            $result = $this->workerRunnerService->runCycle(function (string $message): void {
+                $this->line($message);
+            });
 
             if ($result->hadTask) {
                 $this->line($result->message);
