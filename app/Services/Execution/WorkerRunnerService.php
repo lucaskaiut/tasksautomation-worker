@@ -32,7 +32,7 @@ class WorkerRunnerService extends Service
         private readonly Filesystem $filesystem,
     ) {}
 
-    public function runCycle(): WorkerCycleResult
+    public function runCycle(?callable $onProgress = null): WorkerCycleResult
     {
         $task = $this->taskApiClient->claimTask();
 
@@ -45,10 +45,16 @@ class WorkerRunnerService extends Service
             );
         }
 
-        return $this->runClaimedTask($task);
+        $onProgress?->__invoke(sprintf(
+            'Task %d claimed. Starting execution for "%s".',
+            $task->id,
+            $task->title,
+        ));
+
+        return $this->runClaimedTask($task, $onProgress);
     }
 
-    public function runClaimedTask(TaskData $task): WorkerCycleResult
+    public function runClaimedTask(TaskData $task, ?callable $onProgress = null): WorkerCycleResult
     {
         $paths = null;
         $taskSucceeded = false;
