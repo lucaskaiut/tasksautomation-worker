@@ -91,7 +91,10 @@ class WorkerRunnerServiceTest extends TestCase
         $this->app->instance(GitPublicationService::class, $publication);
 
         $reporter = Mockery::mock(TaskResultReporterService::class);
-        $reporter->shouldReceive('reportTechnicalSuccess')->once();
+        $reporter->shouldReceive('reportTechnicalSuccess')->once()->withArgs(function ($reportedTask, ...$args) use ($task): bool {
+            return $reportedTask === $task;
+        });
+        $reporter->shouldNotReceive('reportFailure');
         $this->app->instance(TaskResultReporterService::class, $reporter);
 
         $result = app(WorkerRunnerService::class)->runCycle();
@@ -147,7 +150,10 @@ class WorkerRunnerServiceTest extends TestCase
         $this->app->instance(GitPublicationService::class, $publication);
 
         $reporter = Mockery::mock(TaskResultReporterService::class);
-        $reporter->shouldReceive('reportFailure')->once();
+        $reporter->shouldReceive('reportFailure')->once()->withArgs(function ($reportedTask, ...$args) use ($task): bool {
+            return $reportedTask === $task;
+        });
+        $reporter->shouldNotReceive('reportTechnicalSuccess');
         $this->app->instance(TaskResultReporterService::class, $reporter);
 
         $result = app(WorkerRunnerService::class)->runCycle();
@@ -203,7 +209,10 @@ class WorkerRunnerServiceTest extends TestCase
         $this->app->instance(GitPublicationService::class, $publication);
 
         $reporter = Mockery::mock(TaskResultReporterService::class);
-        $reporter->shouldReceive('reportFailure')->once();
+        $reporter->shouldReceive('reportFailure')->once()->withArgs(function ($reportedTask, ...$args) use ($task): bool {
+            return $reportedTask === $task;
+        });
+        $reporter->shouldNotReceive('reportTechnicalSuccess');
         $this->app->instance(TaskResultReporterService::class, $reporter);
 
         $result = app(WorkerRunnerService::class)->runCycle();
