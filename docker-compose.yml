@@ -1,0 +1,25 @@
+services:
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    working_dir: /var/www/html
+    command: ["php", "artisan", "worker:run"]
+    restart: unless-stopped
+    volumes:
+      - .:/var/www/html
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${HOME}/.ssh:/root/.ssh:ro
+      - ${HOME}/.gitconfig:/root/.gitconfig:ro
+      - ${HOME}/.codex:/root/.codex
+    environment:
+      APP_ENV: local
+      WORKER_CODEX_SANDBOX: danger-full-access
+      WORKER_DOCKER_BINARY: docker-compose
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - seccomp:unconfined
+      - apparmor:unconfined
+    tty: true
+    stdin_open: true
