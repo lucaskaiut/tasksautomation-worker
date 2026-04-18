@@ -89,7 +89,7 @@ class WorkerRunnerService extends Service
             $this->writeFailureContext($paths, $task, $failureStage, $e, $diagnostics);
 
             $this->taskResultReporterService->reportFailure(
-                taskId: $task->id,
+                task: $task,
                 executionSummary: 'Worker execution failed before completing the task flow.',
                 failureReason: $e->getMessage(),
                 metadata: array_filter([
@@ -129,7 +129,7 @@ class WorkerRunnerService extends Service
             $publicationResult = $this->gitPublicationService->publish($task, $paths);
 
             $this->taskResultReporterService->reportTechnicalSuccess(
-                taskId: $task->id,
+                task: $task,
                 executionSummary: $this->buildSuccessSummary($task, $loopResult, $publicationResult),
                 branchName: $publicationResult->branchName,
                 commitSha: $publicationResult->commitSha,
@@ -142,7 +142,7 @@ class WorkerRunnerService extends Service
 
         $gitDiagnostics = $this->captureGitDiagnostics($paths, 'loop-failure');
         $this->taskResultReporterService->reportFailure(
-            taskId: $task->id,
+            task: $task,
             executionSummary: $this->buildFailureSummary($task, $loopResult),
             failureReason: $loopResult->finalTechnicalError ?? 'Execution loop exhausted attempts.',
             metadata: $this->buildMetadata($repositorySync, $loopResult, null, $gitDiagnostics, $paths->root),
