@@ -13,6 +13,7 @@ class EvolutionApiClientTest extends TestCase
     {
         config([
             'evolution.whatsapp.base_url' => 'https://evolution.example.com/',
+            'evolution.whatsapp.api_key' => 'secret-key',
             'evolution.whatsapp.instance_name' => 'worker-instance',
             'evolution.whatsapp.destination_number' => '5511999999999',
             'evolution.whatsapp.timeout_seconds' => 10,
@@ -28,6 +29,7 @@ class EvolutionApiClientTest extends TestCase
         Http::assertSent(function ($request): bool {
             return $request->url() === 'https://evolution.example.com/message/sendText/worker-instance'
                 && $request->method() === 'POST'
+                && $request->hasHeader('apikey', 'secret-key')
                 && $request['number'] === '5511999999999'
                 && $request['text'] === 'mensagem final';
         });
@@ -37,6 +39,7 @@ class EvolutionApiClientTest extends TestCase
     {
         config([
             'evolution.whatsapp.base_url' => 'https://evolution.example.com/',
+            'evolution.whatsapp.api_key' => 'secret-key',
             'evolution.whatsapp.instance_name' => 'worker-instance',
         ]);
 
@@ -50,6 +53,7 @@ class EvolutionApiClientTest extends TestCase
     {
         config([
             'evolution.whatsapp.base_url' => 'https://evolution.example.com',
+            'evolution.whatsapp.api_key' => 'secret-key',
             'evolution.whatsapp.instance_name' => 'worker-instance',
             'evolution.whatsapp.destination_number' => '5511999999999',
         ]);
@@ -60,6 +64,21 @@ class EvolutionApiClientTest extends TestCase
 
         $this->expectException(EvolutionApiException::class);
         $this->expectExceptionMessage('Evolution API returned HTTP 502 while sending WhatsApp notification.');
+
+        app(EvolutionApiClient::class)->sendText('mensagem final');
+    }
+
+    public function test_send_text_requires_api_key_configuration(): void
+    {
+        config([
+            'evolution.whatsapp.base_url' => 'https://evolution.example.com',
+            'evolution.whatsapp.instance_name' => 'worker-instance',
+            'evolution.whatsapp.destination_number' => '5511999999999',
+            'evolution.whatsapp.api_key' => '',
+        ]);
+
+        $this->expectException(EvolutionApiException::class);
+        $this->expectExceptionMessage('Evolution API key is not configured.');
 
         app(EvolutionApiClient::class)->sendText('mensagem final');
     }
