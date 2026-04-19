@@ -19,6 +19,7 @@ class EvolutionConfigTest extends TestCase
         $this->assertArrayHasKey('whatsapp', $config);
         $this->assertArrayHasKey('enabled', $config['whatsapp']);
         $this->assertArrayHasKey('base_url', $config['whatsapp']);
+        $this->assertArrayHasKey('api_key', $config['whatsapp']);
         $this->assertArrayHasKey('instance_name', $config['whatsapp']);
         $this->assertArrayHasKey('destination_number', $config['whatsapp']);
         $this->assertArrayHasKey('timeout_seconds', $config['whatsapp']);

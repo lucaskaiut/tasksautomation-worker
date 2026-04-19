@@ -54,8 +54,16 @@ class EvolutionApiClient extends Service
     {
         return Http::timeout((int) config('evolution.whatsapp.timeout_seconds', 10))
             ->connectTimeout((int) config('evolution.whatsapp.connect_timeout_seconds', 5))
+            ->withHeaders([
+                'apikey' => $this->apiKey(),
+            ])
             ->acceptJson()
             ->asJson();
+    }
+
+    private function apiKey(): string
+    {
+        return $this->requiredConfig('evolution.whatsapp.api_key', 'Evolution API key');
     }
 
     private function requiredConfig(string $key, string $label): string
