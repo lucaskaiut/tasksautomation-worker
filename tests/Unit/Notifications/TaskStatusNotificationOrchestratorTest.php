@@ -26,6 +26,8 @@ class TaskStatusNotificationOrchestratorTest extends TestCase
             'evolution.whatsapp.enabled' => true,
         ]);
 
+        Log::spy();
+
         $formatter = Mockery::mock(TaskStatusNotificationFormatter::class);
         $formatter->shouldReceive('format')->once()->andReturn('formatted message');
 
@@ -38,6 +40,7 @@ class TaskStatusNotificationOrchestratorTest extends TestCase
         $service = new TaskStatusNotificationOrchestrator($formatter, [$channel]);
         $service->notify($this->makeNotification());
 
+        Log::shouldNotHaveReceived('warning');
         $this->addToAssertionCount(1);
     }
 
@@ -48,16 +51,25 @@ class TaskStatusNotificationOrchestratorTest extends TestCase
             'evolution.whatsapp.enabled' => false,
         ]);
 
+        Log::spy();
+
         $formatter = Mockery::mock(TaskStatusNotificationFormatter::class);
         $formatter->shouldReceive('format')->once()->andReturn('formatted message');
 
         $channel = Mockery::mock(NotificationChannel::class);
         $channel->shouldReceive('isEnabled')->once()->andReturn(false);
+        $channel->shouldReceive('name')->once()->andReturn('whatsapp');
         $channel->shouldNotReceive('send');
 
         $service = new TaskStatusNotificationOrchestrator($formatter, [$channel]);
         $service->notify($this->makeNotification());
 
+        Log::shouldHaveReceived('warning')->with('No notification channels were enabled for task completion.', Mockery::on(function (array $context): bool {
+            return ($context['task_id'] ?? null) === 501
+                && ($context['reported_status'] ?? null) === 'review'
+                && ($context['result'] ?? null) === 'success'
+                && ($context['disabled_channels'] ?? null) === ['whatsapp'];
+        }))->once();
         $this->addToAssertionCount(1);
     }
 
@@ -83,6 +95,31 @@ class TaskStatusNotificationOrchestratorTest extends TestCase
 
         Log::shouldHaveReceived('warning')->once();
         $this->addToAssertionCount(1);
+    }
+
+    public function test_notify_logs_when_notifications_are_globally_disabled(): void
+    {
+        config([
+            'evolution.notifications.enabled' => false,
+        ]);
+
+        Log::spy();
+
+        $formatter = Mockery::mock(TaskStatusNotificationFormatter::class);
+        $formatter->shouldNotReceive('format');
+
+        $channel = Mockery::mock(NotificationChannel::class);
+        $channel->shouldNotReceive('isEnabled');
+        $channel->shouldNotReceive('send');
+
+        $service = new TaskStatusNotificationOrchestrator($formatter, [$channel]);
+        $service->notify($this->makeNotification());
+
+        Log::shouldHaveReceived('info')->with('Task notifications are disabled. Skipping dispatch.', Mockery::on(function (array $context): bool {
+            return ($context['task_id'] ?? null) === 501
+                && ($context['reported_status'] ?? null) === 'review'
+                && ($context['result'] ?? null) === 'success';
+        }))->once();
     }
 
     private function makeNotification(): TaskStatusNotification

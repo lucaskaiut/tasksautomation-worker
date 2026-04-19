@@ -21,18 +21,40 @@ class TaskStatusNotificationOrchestrator extends Service
     public function notify(TaskStatusNotification $notification): void
     {
         if (! (bool) config('evolution.notifications.enabled', true)) {
+            Log::info('Task notifications are disabled. Skipping dispatch.', [
+                'task_id' => $notification->task->id,
+                'reported_status' => $notification->reportedStatus,
+                'result' => $notification->result,
+            ]);
+
             return;
         }
 
         $message = $this->formatter->format($notification);
+        $enabledChannelsDispatched = 0;
+        $disabledChannels = [];
 
         foreach ($this->channels as $channel) {
-            if (! $channel instanceof NotificationChannel || ! $channel->isEnabled()) {
+            if (! $channel instanceof NotificationChannel) {
+                Log::warning('Invalid notification channel binding was ignored.', [
+                    'task_id' => $notification->task->id,
+                    'reported_status' => $notification->reportedStatus,
+                    'result' => $notification->result,
+                    'channel_type' => get_debug_type($channel),
+                ]);
+
+                continue;
+            }
+
+            if (! $channel->isEnabled()) {
+                $disabledChannels[] = $channel->name();
+
                 continue;
             }
 
             try {
                 $channel->send($notification, $message);
+                $enabledChannelsDispatched++;
             } catch (Throwable $e) {
                 Log::warning('Notification channel failed and was ignored.', [
                     'channel' => $channel->name(),
@@ -43,6 +65,15 @@ class TaskStatusNotificationOrchestrator extends Service
                     'error' => $e->getMessage(),
                 ]);
             }
+        }
+
+        if ($enabledChannelsDispatched === 0) {
+            Log::warning('No notification channels were enabled for task completion.', [
+                'task_id' => $notification->task->id,
+                'reported_status' => $notification->reportedStatus,
+                'result' => $notification->result,
+                'disabled_channels' => $disabledChannels,
+            ]);
         }
     }
 }
