@@ -6,6 +6,7 @@ use App\DTOs\Mapping\ApiTaskMapper;
 use App\Services\Api\TaskApiClient;
 use App\Services\Notifications\TaskStatusNotificationOrchestrator;
 use App\Services\Reporting\TaskResultReporterService;
+use Illuminate\Support\Facades\Log;
 use Mockery;
 use Tests\TestCase;
 
@@ -20,6 +21,7 @@ class TaskResultReporterServiceTest extends TestCase
     public function test_report_technical_success_sends_review_payload_to_finish_endpoint(): void
     {
         config(['worker.worker_id' => 'worker-local-01']);
+        Log::spy();
 
         $task = $this->makeTask();
         $client = Mockery::mock(TaskApiClient::class);
@@ -61,12 +63,16 @@ class TaskResultReporterServiceTest extends TestCase
             ],
         );
 
+        Log::shouldHaveReceived('info')->with('Reporting task completion.', Mockery::type('array'))->once();
+        Log::shouldHaveReceived('info')->with('Task completion reported successfully.', Mockery::type('array'))->once();
+        Log::shouldHaveReceived('info')->with('Dispatching task completion notifications.', Mockery::type('array'))->once();
         $this->addToAssertionCount(1);
     }
 
     public function test_report_failure_sends_failed_payload_to_finish_endpoint(): void
     {
         config(['worker.worker_id' => 'worker-local-01']);
+        Log::spy();
 
         $task = $this->makeTask();
         $client = Mockery::mock(TaskApiClient::class);
@@ -101,12 +107,16 @@ class TaskResultReporterServiceTest extends TestCase
             logsPath: 'storage/logs/task-123.log',
         );
 
+        Log::shouldHaveReceived('info')->with('Reporting task completion.', Mockery::type('array'))->once();
+        Log::shouldHaveReceived('info')->with('Task completion reported successfully.', Mockery::type('array'))->once();
+        Log::shouldHaveReceived('info')->with('Dispatching task completion notifications.', Mockery::type('array'))->once();
         $this->addToAssertionCount(1);
     }
 
     public function test_report_technical_success_omits_optional_null_fields(): void
     {
         config(['worker.worker_id' => 'worker-local-01']);
+        Log::spy();
 
         $task = $this->makeTask(taskId: 44);
         $client = Mockery::mock(TaskApiClient::class);
@@ -126,12 +136,16 @@ class TaskResultReporterServiceTest extends TestCase
             executionSummary: 'Resumo estruturado',
         );
 
+        Log::shouldHaveReceived('info')->with('Reporting task completion.', Mockery::type('array'))->once();
+        Log::shouldHaveReceived('info')->with('Task completion reported successfully.', Mockery::type('array'))->once();
+        Log::shouldHaveReceived('info')->with('Dispatching task completion notifications.', Mockery::type('array'))->once();
         $this->addToAssertionCount(1);
     }
 
-    public function test_report_does_not_notify_when_finish_request_fails(): void
+    public function test_report_notifies_and_rethrows_when_finish_request_fails(): void
     {
         config(['worker.worker_id' => 'worker-local-01']);
+        Log::spy();
 
         $task = $this->makeTask();
         $client = Mockery::mock(TaskApiClient::class);
@@ -139,17 +153,34 @@ class TaskResultReporterServiceTest extends TestCase
         $this->app->instance(TaskApiClient::class, $client);
 
         $orchestrator = Mockery::mock(TaskStatusNotificationOrchestrator::class);
-        $orchestrator->shouldNotReceive('notify');
+        $orchestrator->shouldReceive('notify')->once()->withArgs(function ($notification): bool {
+            return $notification->task->id === 123
+                && $notification->result === 'failure'
+                && $notification->reportedStatus === 'failed'
+                && $notification->failureReason === 'Falha externa';
+        });
         $this->app->instance(TaskStatusNotificationOrchestrator::class, $orchestrator);
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('API offline');
 
-        app(TaskResultReporterService::class)->reportFailure(
-            task: $task,
-            executionSummary: 'Resumo',
-            failureReason: 'Falha externa',
-        );
+        try {
+            app(TaskResultReporterService::class)->reportFailure(
+                task: $task,
+                executionSummary: 'Resumo',
+                failureReason: 'Falha externa',
+            );
+        } finally {
+            Log::shouldHaveReceived('info')->with('Reporting task completion.', Mockery::type('array'))->once();
+            Log::shouldHaveReceived('error')->with('Task completion report failed. Notification dispatch will still be attempted.', Mockery::on(function (array $context): bool {
+                return ($context['task_id'] ?? null) === 123
+                    && ($context['reported_status'] ?? null) === 'failed'
+                    && ($context['result'] ?? null) === 'failure'
+                    && ($context['exception_class'] ?? null) === \RuntimeException::class
+                    && ($context['error'] ?? null) === 'API offline';
+            }))->once();
+            Log::shouldHaveReceived('info')->with('Dispatching task completion notifications.', Mockery::type('array'))->once();
+        }
     }
 
     private function makeTask(int $taskId = 123): \App\DTOs\TaskData

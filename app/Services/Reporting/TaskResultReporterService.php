@@ -8,6 +8,8 @@ use App\Services\Api\TaskApiClient;
 use App\Services\Notifications\TaskStatusNotificationOrchestrator;
 use App\Services\Service;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class TaskResultReporterService extends Service
 {
@@ -36,9 +38,7 @@ class TaskResultReporterService extends Service
             'metadata' => $metadata === [] ? null : $metadata,
         ], static fn (mixed $value): bool => $value !== null);
 
-        $this->taskApiClient->finishTask($task->id, $payload);
-
-        $this->notificationOrchestrator->notify(new TaskStatusNotification(
+        $notification = new TaskStatusNotification(
             task: $task,
             result: 'success',
             reportedStatus: 'review',
@@ -49,7 +49,9 @@ class TaskResultReporterService extends Service
             logsPath: $logsPath,
             metadata: $metadata,
             occurredAt: CarbonImmutable::now()->toIso8601String(),
-        ));
+        );
+
+        $this->reportAndNotify($task, $payload, $notification);
     }
 
     public function reportFailure(
@@ -68,9 +70,7 @@ class TaskResultReporterService extends Service
             'metadata' => $metadata === [] ? null : $metadata,
         ], static fn (mixed $value): bool => $value !== null);
 
-        $this->taskApiClient->finishTask($task->id, $payload);
-
-        $this->notificationOrchestrator->notify(new TaskStatusNotification(
+        $notification = new TaskStatusNotification(
             task: $task,
             result: 'failure',
             reportedStatus: 'failed',
@@ -79,6 +79,52 @@ class TaskResultReporterService extends Service
             logsPath: $logsPath,
             metadata: $metadata,
             occurredAt: CarbonImmutable::now()->toIso8601String(),
-        ));
+        );
+
+        $this->reportAndNotify($task, $payload, $notification);
+    }
+
+    private function reportAndNotify(TaskData $task, array $payload, TaskStatusNotification $notification): void
+    {
+        Log::info('Reporting task completion.', [
+            'task_id' => $task->id,
+            'reported_status' => $notification->reportedStatus,
+            'result' => $notification->result,
+        ]);
+
+        $finishFailure = null;
+
+        try {
+            $this->taskApiClient->finishTask($task->id, $payload);
+
+            Log::info('Task completion reported successfully.', [
+                'task_id' => $task->id,
+                'reported_status' => $notification->reportedStatus,
+                'result' => $notification->result,
+            ]);
+        } catch (Throwable $throwable) {
+            $finishFailure = $throwable;
+
+            Log::error('Task completion report failed. Notification dispatch will still be attempted.', [
+                'task_id' => $task->id,
+                'reported_status' => $notification->reportedStatus,
+                'result' => $notification->result,
+                'exception_class' => $throwable::class,
+                'error' => $throwable->getMessage(),
+                'payload' => $payload,
+            ]);
+        }
+
+        Log::info('Dispatching task completion notifications.', [
+            'task_id' => $task->id,
+            'reported_status' => $notification->reportedStatus,
+            'result' => $notification->result,
+        ]);
+
+        $this->notificationOrchestrator->notify($notification);
+
+        if ($finishFailure !== null) {
+            throw $finishFailure;
+        }
     }
 }
