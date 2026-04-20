@@ -32,9 +32,14 @@ class WorkerRunnerService extends Service
         private readonly Filesystem $filesystem,
     ) {}
 
+    public function claimTask(): ?TaskData
+    {
+        return $this->taskApiClient->claimTask();
+    }
+
     public function runCycle(?callable $onProgress = null): WorkerCycleResult
     {
-        $task = $this->taskApiClient->claimTask();
+        $task = $this->claimTask();
 
         if ($task === null) {
             return new WorkerCycleResult(

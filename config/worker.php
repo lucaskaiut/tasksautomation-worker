@@ -45,6 +45,7 @@ return [
     'worker_id' => env('WORKER_ID', 'worker-1'),
     'polling_interval_seconds' => (int) env('WORKER_POLLING_INTERVAL', 30),
     'heartbeat_interval_seconds' => (int) env('WORKER_HEARTBEAT_INTERVAL', 10),
+    'max_concurrent_tasks' => (int) env('WORKER_MAX_CONCURRENT_TASKS', 1),
     'max_attempts_per_execution' => (int) env('WORKER_MAX_ATTEMPTS_PER_EXECUTION', 5),
     'workspaces_path' => env('WORKER_WORKSPACES_PATH') ?: storage_path('workspaces'),
     'repositories' => [

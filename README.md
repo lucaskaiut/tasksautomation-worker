@@ -64,6 +64,7 @@ Configurações relevantes já suportadas:
 - `WORKER_API_FINISH_PATH_TEMPLATE`
 - `WORKER_POLLING_INTERVAL`
 - `WORKER_HEARTBEAT_INTERVAL`
+- `WORKER_MAX_CONCURRENT_TASKS`
 - `WORKER_HEARTBEAT_FAIL_ON_ERROR`
 - `WORKER_HEARTBEAT_POLL_INTERVAL_MS`
 - `WORKER_MAX_ATTEMPTS_PER_EXECUTION`
@@ -104,6 +105,14 @@ Rodar continuamente:
 ```bash
 php artisan worker:run
 ```
+
+Concorrência opcional:
+
+```dotenv
+WORKER_MAX_CONCURRENT_TASKS=3
+```
+
+Com valor maior que `1`, o comando principal passa a manter um pool de subprocessos PHP e continua fazendo `claim` enquanto existir slot livre e houver task disponível.
 
 Rodar um único ciclo de polling:
 
