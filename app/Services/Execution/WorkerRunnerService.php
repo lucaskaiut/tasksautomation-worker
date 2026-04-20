@@ -15,6 +15,7 @@ use App\Services\Repository\RepositorySyncService;
 use App\Services\Service;
 use App\Services\Workspace\WorkspaceService;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Arr;
 use Symfony\Component\Process\Process;
 use Throwable;
 
@@ -136,37 +137,74 @@ class WorkerRunnerService extends Service
         ExecutionLoopResult $loopResult,
     ): void {
         if ($loopResult->succeeded) {
+            $stagePayload = $this->buildStagePayload($task, $loopResult);
+
+            if ($task->isAnalysisStage()) {
+                $this->taskResultReporterService->reportTechnicalSuccess(
+                    task: $task,
+                    executionSummary: $this->buildSuccessSummary($task, $loopResult, null, $stagePayload),
+                    logsPath: $paths->logsPath,
+                    metadata: $this->buildMetadata($task, $repositorySync, $loopResult, null, null, $paths->root),
+                    extraPayload: $stagePayload,
+                );
+
+                return;
+            }
+
             $prePublicationDiagnostics = $this->captureGitDiagnostics($paths, 'pre-publication');
             $publicationResult = $this->gitPublicationService->publish($task, $paths);
 
             $this->taskResultReporterService->reportTechnicalSuccess(
                 task: $task,
-                executionSummary: $this->buildSuccessSummary($task, $loopResult, $publicationResult),
+                executionSummary: $this->buildSuccessSummary($task, $loopResult, $publicationResult, $stagePayload),
                 branchName: $publicationResult->branchName,
                 commitSha: $publicationResult->commitSha,
                 logsPath: $paths->logsPath,
-                metadata: $this->buildMetadata($repositorySync, $loopResult, $publicationResult, $prePublicationDiagnostics, $paths->root),
+                metadata: $this->buildMetadata($task, $repositorySync, $loopResult, $publicationResult, $prePublicationDiagnostics, $paths->root),
+                extraPayload: $stagePayload,
             );
 
             return;
         }
 
         $gitDiagnostics = $this->captureGitDiagnostics($paths, 'loop-failure');
+        $stagePayload = $this->buildStagePayload($task, $loopResult);
         $this->taskResultReporterService->reportFailure(
             task: $task,
             executionSummary: $this->buildFailureSummary($task, $loopResult),
             failureReason: $loopResult->finalTechnicalError ?? 'Execution loop exhausted attempts.',
-            metadata: $this->buildMetadata($repositorySync, $loopResult, null, $gitDiagnostics, $paths->root),
+            metadata: $this->buildMetadata($task, $repositorySync, $loopResult, null, $gitDiagnostics, $paths->root),
             logsPath: $paths->logsPath,
+            extraPayload: $stagePayload,
         );
     }
 
     private function buildSuccessSummary(
         TaskData $task,
         ExecutionLoopResult $loopResult,
-        PublicationResult $publicationResult,
+        ?PublicationResult $publicationResult,
+        array $stagePayload,
     ): string
     {
+        if ($task->isAnalysisStage()) {
+            $nextStage = Arr::get($stagePayload, 'analysis.next_stage');
+
+            return sprintf(
+                'Task "%s" foi analisada com sucesso apos %d tentativa(s)%s.',
+                $task->title,
+                $loopResult->attemptsUsed,
+                is_string($nextStage) && $nextStage !== '' ? ' e sugeriu o proximo estagio '.$nextStage : '',
+            );
+        }
+
+        if ($publicationResult === null) {
+            return sprintf(
+                'Task "%s" completed successfully after %d attempt(s).',
+                $task->title,
+                $loopResult->attemptsUsed,
+            );
+        }
+
         return sprintf(
             'Task "%s" completed successfully after %d attempt(s) and was published to branch %s.',
             $task->title,
@@ -185,6 +223,7 @@ class WorkerRunnerService extends Service
     }
 
     private function buildMetadata(
+        TaskData $task,
         RepositorySyncResult $repositorySync,
         ExecutionLoopResult $loopResult,
         ?PublicationResult $publicationResult = null,
@@ -193,6 +232,7 @@ class WorkerRunnerService extends Service
     ): array
     {
         $metadata = [
+            'current_stage' => $task->currentStage,
             'repository_strategy' => $repositorySync->strategy,
             'repository_cache_path' => $repositorySync->cachePath,
             'workspace_repository_path' => $repositorySync->workspaceRepositoryPath,
@@ -306,5 +346,158 @@ class WorkerRunnerService extends Service
             $paths->logsPath.DIRECTORY_SEPARATOR.$filename,
             json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)
         );
+    }
+
+    private function buildStagePayload(TaskData $task, ExecutionLoopResult $loopResult): array
+    {
+        $lastIteration = $loopResult->iterations === [] ? null : $loopResult->iterations[array_key_last($loopResult->iterations)];
+        $executionResult = $lastIteration?->executionResult;
+        $rawOutput = $this->combineExecutionOutput(
+            $executionResult?->stdout ?? '',
+            $executionResult?->stderr ?? '',
+        );
+        $structuredOutput = $this->extractStructuredOutput($rawOutput);
+        $summary = $this->extractStageSummary($structuredOutput, $rawOutput, $task->title);
+
+        $payload = [
+            'current_stage' => $task->currentStage,
+            'stage_execution' => array_filter([
+                'reference' => $lastIteration !== null ? sprintf('task-%d-attempt-%02d', $task->id, $lastIteration->attempt) : sprintf('task-%d', $task->id),
+                'stage' => $task->currentStage,
+                'status' => $loopResult->succeeded ? 'completed' : 'failed',
+                'agent' => 'codex',
+                'summary' => $summary,
+                'output' => $structuredOutput,
+                'raw_output' => $rawOutput !== '' ? $rawOutput : null,
+                'exit_code' => $executionResult?->exitCode,
+                'context' => [
+                    'attempts_used' => $loopResult->attemptsUsed,
+                ],
+            ], static fn (mixed $value): bool => $value !== null),
+        ];
+
+        if (! $task->isAnalysisStage() || ! is_array($structuredOutput)) {
+            return $payload;
+        }
+
+        $analysis = array_filter([
+            'domain' => $this->normalizeAnalysisDomain(Arr::get($structuredOutput, 'domain')),
+            'confidence' => $this->normalizeConfidence(Arr::get($structuredOutput, 'confidence')),
+            'next_stage' => $this->normalizeStage(Arr::get($structuredOutput, 'next_stage')),
+            'summary' => Arr::get($structuredOutput, 'summary'),
+            'evidence' => Arr::get($structuredOutput, 'evidence'),
+            'risks' => Arr::get($structuredOutput, 'risks'),
+            'artifacts' => Arr::get($structuredOutput, 'artifacts'),
+            'notes' => Arr::get($structuredOutput, 'notes'),
+        ], static fn (mixed $value): bool => $value !== null);
+
+        if ($analysis !== []) {
+            $payload['analysis'] = $analysis;
+        }
+
+        if (isset($analysis['next_stage']) && is_string($analysis['next_stage'])) {
+            $payload['handoff'] = array_filter([
+                'from_stage' => $task->currentStage,
+                'to_stage' => $analysis['next_stage'],
+                'reason' => $analysis['summary'] ?? null,
+                'confidence' => $analysis['confidence'] ?? null,
+                'summary' => $analysis['summary'] ?? null,
+                'payload' => [
+                    'analysis' => $analysis,
+                ],
+            ], static fn (mixed $value): bool => $value !== null);
+        }
+
+        return $payload;
+    }
+
+    private function combineExecutionOutput(string $stdout, string $stderr): string
+    {
+        return trim(implode("\n", array_filter([
+            trim($stdout),
+            trim($stderr),
+        ])));
+    }
+
+    private function extractStructuredOutput(string $rawOutput): ?array
+    {
+        if ($rawOutput === '') {
+            return null;
+        }
+
+        $candidates = [$rawOutput];
+
+        if (preg_match('/```(?:json)?\s*(.*?)```/is', $rawOutput, $matches) === 1) {
+            $candidates[] = trim($matches[1]);
+        }
+
+        $firstBrace = strpos($rawOutput, '{');
+        $lastBrace = strrpos($rawOutput, '}');
+
+        if ($firstBrace !== false && $lastBrace !== false && $lastBrace > $firstBrace) {
+            $candidates[] = substr($rawOutput, $firstBrace, $lastBrace - $firstBrace + 1);
+        }
+
+        foreach ($candidates as $candidate) {
+            try {
+                $decoded = json_decode(trim($candidate), true, 512, JSON_THROW_ON_ERROR);
+            } catch (\JsonException) {
+                continue;
+            }
+
+            if (is_array($decoded)) {
+                return $decoded;
+            }
+        }
+
+        return null;
+    }
+
+    private function extractStageSummary(?array $structuredOutput, string $rawOutput, string $fallbackTitle): string
+    {
+        $summary = Arr::get($structuredOutput, 'summary');
+
+        if (is_string($summary) && trim($summary) !== '') {
+            return trim($summary);
+        }
+
+        if ($rawOutput !== '') {
+            return mb_substr(preg_replace('/\s+/u', ' ', $rawOutput) ?? $rawOutput, 0, 500);
+        }
+
+        return 'Stage execution finished for task "'.$fallbackTitle.'".';
+    }
+
+    private function normalizeStage(mixed $value): ?string
+    {
+        if (! is_string($value) || trim($value) === '') {
+            return null;
+        }
+
+        return \App\Support\Enums\TaskStage::tryFrom(trim($value))?->value;
+    }
+
+    private function normalizeAnalysisDomain(mixed $value): ?string
+    {
+        if (! is_string($value) || trim($value) === '') {
+            return null;
+        }
+
+        return \App\Support\Enums\TaskAnalysisDomain::tryFrom(trim($value))?->value;
+    }
+
+    private function normalizeConfidence(mixed $value): ?float
+    {
+        if (! is_numeric($value)) {
+            return null;
+        }
+
+        $confidence = (float) $value;
+
+        if ($confidence < 0 || $confidence > 1) {
+            return null;
+        }
+
+        return $confidence;
     }
 }

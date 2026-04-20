@@ -228,9 +228,73 @@ class WorkerRunnerServiceTest extends TestCase
         $this->assertSame($task->id, $result->taskId);
     }
 
-    private function makeTask(): \App\DTOs\TaskData
+    public function test_run_cycle_skips_publication_for_analysis_stage(): void
     {
-        return ApiTaskMapper::map([
+        $task = $this->makeTask([
+            'current_stage' => 'analysis',
+        ]);
+        $paths = $this->makeWorkspacePaths();
+
+        $api = Mockery::mock(TaskApiClient::class);
+        $api->shouldReceive('claimTask')->once()->andReturn($task);
+        $this->app->instance(TaskApiClient::class, $api);
+
+        $workspace = Mockery::mock(WorkspaceService::class);
+        $workspace->shouldReceive('prepare')->once()->andReturn($paths);
+        $workspace->shouldReceive('cleanup')->once()->with($task->id, true);
+        $this->app->instance(WorkspaceService::class, $workspace);
+
+        $resolver = Mockery::mock(ProjectRepositoryResolver::class);
+        $resolver->shouldReceive('resolveForTask')->once()->andReturn(new RepositoryResolution(
+            strategy: ProjectRepositoryResolver::STRATEGY_LOCAL_EXISTING,
+            expectedBasePath: '/tmp/local/repo',
+            repositoryUrl: 'https://github.com/acme/project',
+            defaultBranch: 'main',
+        ));
+        $this->app->instance(ProjectRepositoryResolver::class, $resolver);
+
+        $sync = Mockery::mock(RepositorySyncService::class);
+        $sync->shouldReceive('syncToWorkspace')->once()->andReturn(new RepositorySyncResult(
+            strategy: ProjectRepositoryResolver::STRATEGY_LOCAL_EXISTING,
+            cachePath: '/tmp/local/repo',
+            workspaceRepositoryPath: $paths->repoPath,
+            defaultBranch: 'main',
+        ));
+        $this->app->instance(RepositorySyncService::class, $sync);
+
+        $loop = Mockery::mock(ExecutionLoopService::class);
+        $loop->shouldReceive('run')->once()->with($task, $paths)->andReturn(new ExecutionLoopResult(
+            succeeded: true,
+            attemptsUsed: 1,
+            iterations: [],
+            finalTechnicalError: null,
+        ));
+        $this->app->instance(ExecutionLoopService::class, $loop);
+
+        $publication = Mockery::mock(GitPublicationService::class);
+        $publication->shouldNotReceive('publish');
+        $this->app->instance(GitPublicationService::class, $publication);
+
+        $reporter = Mockery::mock(TaskResultReporterService::class);
+        $reporter->shouldReceive('reportTechnicalSuccess')->once()->withArgs(function ($reportedTask, $summary, $branchName, $commitSha) use ($task): bool {
+            return $reportedTask === $task
+                && str_contains($summary, 'foi analisada com sucesso')
+                && $branchName === null
+                && $commitSha === null;
+        });
+        $reporter->shouldNotReceive('reportFailure');
+        $this->app->instance(TaskResultReporterService::class, $reporter);
+
+        $result = app(WorkerRunnerService::class)->runCycle();
+
+        $this->assertTrue($result->hadTask);
+        $this->assertTrue($result->succeeded);
+        $this->assertSame($task->id, $result->taskId);
+    }
+
+    private function makeTask(array $overrides = []): \App\DTOs\TaskData
+    {
+        return ApiTaskMapper::map(array_replace_recursive([
             'id' => 501,
             'title' => 'Executar task',
             'status' => 'claimed',
@@ -242,6 +306,7 @@ class WorkerRunnerServiceTest extends TestCase
             'attempts' => 1,
             'max_attempts' => 3,
             'implementation_type' => 'feature',
+            'current_stage' => 'implementation:backend',
             'review_status' => '',
             'revision_count' => 0,
             'priority' => 'medium',
@@ -254,7 +319,7 @@ class WorkerRunnerServiceTest extends TestCase
                 'repository_url' => 'https://github.com/acme/project',
                 'default_branch' => 'main',
             ],
-        ]);
+        ], $overrides));
     }
 
     private function makeWorkspacePaths(): WorkspacePaths

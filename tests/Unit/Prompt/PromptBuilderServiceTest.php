@@ -37,6 +37,23 @@ class PromptBuilderServiceTest extends TestCase
         $this->assertStringContainsString('arquitetura, regras de negocio, fluxos funcionais', $prompt);
         $this->assertStringContainsString('## Instrucoes Operacionais', $prompt);
         $this->assertStringContainsString('Nao reimplemente do zero.', $prompt);
+        $this->assertStringContainsString('Estagio atual: implementation:backend', $prompt);
+        $this->assertStringContainsString('Dominio esperado desta implementacao: backend.', $prompt);
+    }
+
+    public function test_build_initial_prompt_for_analysis_stage_requires_json_only_output(): void
+    {
+        $task = $this->makeTask([
+            'current_stage' => 'analysis',
+        ]);
+
+        $prompt = app(PromptBuilderService::class)->buildInitialPrompt($task);
+
+        $this->assertStringContainsString('# Prompt de Analise', $prompt);
+        $this->assertStringContainsString('Estagio atual: analysis', $prompt);
+        $this->assertStringContainsString('Nao implemente alteracoes no codigo', $prompt);
+        $this->assertStringContainsString('Retorne apenas o objeto JSON', $prompt);
+        $this->assertStringContainsString('"next_stage": "implementation:backend"', $prompt);
     }
 
     public function test_build_iteration_prompt_includes_incremental_error_and_human_feedback(): void
@@ -64,9 +81,9 @@ class PromptBuilderServiceTest extends TestCase
         $this->assertStringContainsString('Nao reimplemente do zero.', $prompt);
     }
 
-    private function makeTask(): \App\DTOs\TaskData
+    private function makeTask(array $overrides = []): \App\DTOs\TaskData
     {
-        return ApiTaskMapper::map([
+        return ApiTaskMapper::map(array_replace_recursive([
             'id' => 11,
             'title' => 'Implementar autenticacao',
             'description' => 'Adicionar fluxo de login com sessao persistida.',
@@ -80,6 +97,7 @@ class PromptBuilderServiceTest extends TestCase
             'claimed_at' => '2026-01-01T00:00:00.000000Z',
             'attempts' => 1,
             'max_attempts' => 5,
+            'current_stage' => 'implementation:backend',
             'review_status' => 'needs_adjustment',
             'revision_count' => 1,
             'priority' => 'high',
@@ -113,6 +131,6 @@ class PromptBuilderServiceTest extends TestCase
                 'is_default' => true,
                 'docker_compose_yml' => "services:\n  app:\n    image: php:8.3-cli",
             ],
-        ]);
+        ], $overrides));
     }
 }
