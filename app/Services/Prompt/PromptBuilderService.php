@@ -5,13 +5,14 @@ namespace App\Services\Prompt;
 use App\DTOs\IterationContext;
 use App\DTOs\TaskData;
 use App\Services\Service;
+use App\Support\Enums\TaskAnalysisDomain;
 
 class PromptBuilderService extends Service
 {
     public function buildInitialPrompt(TaskData $task): string
     {
         return $this->renderPrompt(
-            title: 'Prompt de Execucao',
+            title: $task->isAnalysisStage() ? 'Prompt de Analise' : 'Prompt de Execucao',
             task: $task,
             extraSections: [],
         );
@@ -55,6 +56,7 @@ class PromptBuilderService extends Service
     {
         $sections = array_values(array_filter([
             '# '.$title,
+            $this->renderStageSection($task),
             $this->section('Objetivo', $task->title),
             $this->optionalSection('Descricao', $task->description),
             $this->optionalSection('Entregaveis', $task->deliverables),
@@ -79,6 +81,50 @@ class PromptBuilderService extends Service
         ]));
 
         return implode("\n\n", $sections)."\n";
+    }
+
+    private function renderStageSection(TaskData $task): string
+    {
+        $stage = $task->stage();
+        $lines = [
+            '- Estagio atual: '.$stage->value,
+        ];
+
+        if ($stage->isAnalysis()) {
+            $lines[] = '- Este estagio e apenas de analise. Nao implemente alteracoes no codigo, nao execute refactors e nao publique mudancas.';
+            $lines[] = '- Investigue o problema, identifique falhas provaveis, riscos tecnicos, impacto e artefatos necessarios para a proxima etapa.';
+            $lines[] = '- Ao finalizar, responda com JSON valido contendo: `domain`, `confidence`, `next_stage`, `summary`, `evidence`, `risks`, `artifacts`, `notes`.';
+            $lines[] = '- `domain` deve ser `backend`, `frontend` ou `infra`. `next_stage` deve ser um de: `implementation:backend`, `implementation:frontend`, `implementation:infra`.';
+            $lines[] = "- Nao use markdown no resultado final deste estagio. Retorne apenas o objeto JSON.";
+
+            return $this->section('Estagio da Task', implode("\n", array_merge($lines, [
+                '- Exemplo de estrutura esperada:',
+                $this->literalBlock(json_encode([
+                    'domain' => TaskAnalysisDomain::Backend->value,
+                    'confidence' => 0.9,
+                    'next_stage' => 'implementation:backend',
+                    'summary' => 'Resumo objetivo da analise.',
+                    'evidence' => [
+                        'entrypoint' => 'Arquivo ou fluxo principal analisado',
+                    ],
+                    'risks' => [
+                        'Risco tecnico identificado',
+                    ],
+                    'artifacts' => [
+                        'Teste ou arquivo relevante',
+                    ],
+                    'notes' => 'Observacoes adicionais.',
+                ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)),
+            ])));
+        }
+
+        $domain = $stage->implementationDomain();
+
+        $lines[] = '- Execute apenas o escopo deste estagio.';
+        $lines[] = '- Se houver necessidade fora deste dominio, documente no resultado, mas nao desvie a implementacao principal.';
+        $lines[] = '- Dominio esperado desta implementacao: '.$domain.'.';
+
+        return $this->section('Estagio da Task', implode("\n", $lines));
     }
 
     private function renderProjectSection(TaskData $task): ?string

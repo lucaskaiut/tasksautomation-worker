@@ -2,6 +2,8 @@
 
 namespace App\DTOs;
 
+use App\Support\Enums\TaskStage;
+
 readonly class TaskData extends DataTransferObject
 {
     public function __construct(
@@ -25,6 +27,10 @@ readonly class TaskData extends DataTransferObject
         public ?string $deliverables,
         public ?string $constraints,
         public ?string $implementationType,
+        public string $currentStage,
+        public ?array $analysis,
+        public ?array $stageExecution,
+        public ?array $handoff,
         public string $status,
         public string $reviewStatus,
         public int $revisionCount,
@@ -38,6 +44,16 @@ readonly class TaskData extends DataTransferObject
         public string $updatedAt,
         public array $sourcePayload,
     ) {}
+
+    public function stage(): TaskStage
+    {
+        return TaskStage::fromTaskValue($this->currentStage);
+    }
+
+    public function isAnalysisStage(): bool
+    {
+        return $this->stage()->isAnalysis();
+    }
 
     public function toNormalizedArray(): array
     {
@@ -62,6 +78,10 @@ readonly class TaskData extends DataTransferObject
             'deliverables' => $this->deliverables,
             'constraints' => $this->constraints,
             'implementation_type' => $this->implementationType,
+            'current_stage' => $this->currentStage,
+            'analysis' => $this->analysis,
+            'stage_execution' => $this->stageExecution,
+            'handoff' => $this->handoff,
             'status' => $this->status,
             'review_status' => $this->reviewStatus,
             'revision_count' => $this->revisionCount,

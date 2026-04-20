@@ -68,13 +68,19 @@ class ExecutionLoopService extends Service
                 $paths,
                 fn () => $this->heartbeatService->beatIfDue($task->id),
             );
-            $validationResult = $executionResult->succeeded
+            $validationResult = $task->isAnalysisStage()
+                ? new ValidationResult(
+                    passed: true,
+                    commands: [],
+                    firstFailureOutput: null,
+                )
+                : ($executionResult->succeeded
                 ? $this->validationService->validate($task, $paths)
                 : new ValidationResult(
                     passed: false,
                     commands: [],
                     firstFailureOutput: $this->buildExecutionFailureOutput($executionResult),
-                );
+                ));
 
             $this->heartbeatService->beatIfDue($task->id);
 

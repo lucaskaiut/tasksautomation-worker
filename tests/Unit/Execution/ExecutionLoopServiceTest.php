@@ -261,9 +261,38 @@ class ExecutionLoopServiceTest extends TestCase
         $this->assertStringContainsString('awaiting human review', (string) $result->finalTechnicalError);
     }
 
-    private function makeTask(): \App\DTOs\TaskData
+    public function test_run_skips_automatic_validation_for_analysis_stage(): void
     {
-        return ApiTaskMapper::map([
+        $task = $this->makeTask([
+            'current_stage' => 'analysis',
+        ]);
+        $paths = $this->makeWorkspacePaths('analysis-stage');
+
+        $promptBuilder = Mockery::mock(PromptBuilderService::class);
+        $promptBuilder->shouldReceive('buildInitialPrompt')->once()->andReturn("# Prompt de analise\n");
+        $this->app->instance(PromptBuilderService::class, $promptBuilder);
+
+        $cursorExecutor = Mockery::mock(CursorExecutorService::class);
+        $cursorExecutor->shouldReceive('execute')->once()->with($paths, Mockery::type(\Closure::class))->andReturn(
+            new ExecutionResult(true, 0, '{"next_stage":"implementation:backend"}', '', 0.2),
+        );
+        $this->app->instance(CursorExecutorService::class, $cursorExecutor);
+
+        $validator = Mockery::mock(AutomaticValidationService::class);
+        $validator->shouldNotReceive('validate');
+        $this->app->instance(AutomaticValidationService::class, $validator);
+
+        $result = app(ExecutionLoopService::class)->run($task, $paths);
+
+        $this->assertTrue($result->succeeded);
+        $this->assertSame(1, $result->attemptsUsed);
+        $this->assertTrue($result->iterations[0]->validationResult->passed);
+        $this->assertSame([], $result->iterations[0]->validationResult->commands);
+    }
+
+    private function makeTask(array $overrides = []): \App\DTOs\TaskData
+    {
+        return ApiTaskMapper::map(array_replace_recursive([
             'id' => 31,
             'title' => 'Executar loop',
             'status' => 'claimed',
@@ -274,12 +303,13 @@ class ExecutionLoopServiceTest extends TestCase
             'claimed_at' => '2026-01-01T00:00:00.000000Z',
             'attempts' => 1,
             'max_attempts' => 5,
+            'current_stage' => 'implementation:backend',
             'review_status' => '',
             'revision_count' => 0,
             'priority' => 'medium',
             'created_at' => '2026-01-01T00:00:00.000000Z',
             'updated_at' => '2026-01-01T00:00:00.000000Z',
-        ]);
+        ], $overrides));
     }
 
     private function makeWorkspacePaths(string $name): WorkspacePaths

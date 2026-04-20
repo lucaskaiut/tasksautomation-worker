@@ -26,8 +26,9 @@ class TaskResultReporterService extends Service
         ?string $pullRequestUrl = null,
         ?string $logsPath = null,
         array $metadata = [],
+        array $extraPayload = [],
     ): void {
-        $payload = array_filter([
+        $payload = array_filter(array_merge([
             'worker_id' => (string) config('worker.worker_id'),
             'status' => 'review',
             'execution_summary' => $executionSummary,
@@ -36,7 +37,7 @@ class TaskResultReporterService extends Service
             'pull_request_url' => $pullRequestUrl,
             'logs_path' => $logsPath,
             'metadata' => $metadata === [] ? null : $metadata,
-        ], static fn (mixed $value): bool => $value !== null);
+        ], $extraPayload), static fn (mixed $value): bool => $value !== null);
 
         $notification = new TaskStatusNotification(
             task: $task,
@@ -60,15 +61,16 @@ class TaskResultReporterService extends Service
         string $failureReason,
         array $metadata = [],
         ?string $logsPath = null,
+        array $extraPayload = [],
     ): void {
-        $payload = array_filter([
+        $payload = array_filter(array_merge([
             'worker_id' => (string) config('worker.worker_id'),
             'status' => 'failed',
             'execution_summary' => $executionSummary,
             'failure_reason' => $failureReason,
             'logs_path' => $logsPath,
             'metadata' => $metadata === [] ? null : $metadata,
-        ], static fn (mixed $value): bool => $value !== null);
+        ], $extraPayload), static fn (mixed $value): bool => $value !== null);
 
         $notification = new TaskStatusNotification(
             task: $task,
