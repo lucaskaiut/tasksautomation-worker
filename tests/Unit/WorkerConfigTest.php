@@ -26,6 +26,7 @@ class WorkerConfigTest extends TestCase
         $this->assertArrayHasKey('worker_id', $worker);
         $this->assertArrayHasKey('polling_interval_seconds', $worker);
         $this->assertArrayHasKey('heartbeat_interval_seconds', $worker);
+        $this->assertArrayHasKey('max_concurrent_tasks', $worker);
         $this->assertArrayHasKey('max_attempts_per_execution', $worker);
         $this->assertArrayHasKey('workspaces_path', $worker);
         $this->assertArrayHasKey('repositories', $worker);

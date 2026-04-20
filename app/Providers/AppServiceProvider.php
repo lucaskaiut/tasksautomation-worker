@@ -9,6 +9,7 @@ use App\Services\Execution\DockerComposeEnvironmentService;
 use App\Services\Execution\ExecutionHeartbeatService;
 use App\Services\Execution\ExecutionLoopService;
 use App\Services\Execution\TaskReviewFlowService;
+use App\Services\Execution\WorkerProcessPoolService;
 use App\Services\Execution\WorkerRunnerService;
 use App\Services\Notifications\Channels\EmailNotificationChannel;
 use App\Services\Notifications\Channels\WhatsAppNotificationChannel;
@@ -37,6 +38,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(ExecutionHeartbeatService::class);
         $this->app->singleton(ExecutionLoopService::class);
         $this->app->singleton(TaskReviewFlowService::class);
+        $this->app->singleton(WorkerProcessPoolService::class);
         $this->app->singleton(WorkerRunnerService::class);
         $this->app->singleton(EvolutionApiClient::class);
         $this->app->singleton(TaskStatusNotificationFormatter::class);
