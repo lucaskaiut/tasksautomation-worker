@@ -1,0 +1,9 @@
+# Sincronização de documentação (regras de negócio e interfaces públicas)
+
+Sempre que alterares **regra de negócio** ou **interface pública**, atualiza na **mesma alteração** (ou no mesmo PR) a documentação que consumidores ou integrações dependem.
+
+**Gatilhos:** serviços de domínio, políticas, Form Requests (semântica), fluxos, enums e estados, rotas e payloads HTTP, `openapi.yml`, resources JSON da API, payloads do worker, config exposta.
+
+**O que manter alinhado:** `../tasksautomation/docs/` (ex.: `task-stage-flow.md`), `openapi.yml` na API, README/integração quando descrevam o comportamento alterado.
+
+Não adicionar documentação extra não necessária; o objetivo é **atualizar** o que documenta o contrato ou o fluxo que mudou. Antes de concluir, confirma exemplos e estados de acordo com código e testes.
