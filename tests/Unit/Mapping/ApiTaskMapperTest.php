@@ -86,4 +86,33 @@ class ApiTaskMapperTest extends TestCase
 
         ApiTaskMapper::map(['title' => 'x']);
     }
+
+    public function test_maps_last_reviewer_user_summary_to_name_string(): void
+    {
+        $payload = [
+            'id' => 1,
+            'project_id' => 1,
+            'environment_profile_id' => 0,
+            'created_by' => 1,
+            'claimed_by_worker' => '',
+            'claimed_at' => '',
+            'attempts' => 0,
+            'max_attempts' => 3,
+            'title' => 'T',
+            'status' => 'done',
+            'review_status' => 'approved',
+            'revision_count' => 0,
+            'priority' => 'low',
+            'last_reviewer' => [
+                'id' => 42,
+                'name' => 'Pat Reviewer',
+            ],
+            'created_at' => '2026-04-21T00:00:00.000000Z',
+            'updated_at' => '2026-04-21T00:00:00.000000Z',
+        ];
+
+        $task = ApiTaskMapper::map($payload);
+
+        $this->assertSame('Pat Reviewer', $task->lastReviewer);
+    }
 }

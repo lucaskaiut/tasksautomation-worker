@@ -53,7 +53,7 @@ final class ApiTaskMapper
             revisionCount: (int) ($data['revision_count'] ?? 0),
             lastReviewedAt: ApiValue::optionalString($data, 'last_reviewed_at'),
             lastReviewedBy: ApiValue::optionalInt($data, 'last_reviewed_by'),
-            lastReviewer: ApiValue::optionalString($data, 'last_reviewer'),
+            lastReviewer: ApiValue::optionalStringOrUserSummary($data, 'last_reviewer'),
             priority: (string) ($data['priority'] ?? ''),
             project: $project,
             environmentProfile: $environmentProfile,
