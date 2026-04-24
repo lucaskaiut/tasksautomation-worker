@@ -16,6 +16,7 @@ services:
       APP_ENV: local
       WORKER_CODEX_SANDBOX: danger-full-access
       WORKER_DOCKER_BINARY: docker-compose
+      TASKS_AUTOMATION_APP_URL: http://tasksautomation-nginx
     cap_add:
       - SYS_ADMIN
     security_opt:
@@ -23,3 +24,9 @@ services:
       - apparmor:unconfined
     tty: true
     stdin_open: true
+    networks:
+      - tasksautomation-network
+
+networks:
+  tasksautomation-network:
+    external: true
